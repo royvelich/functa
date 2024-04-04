@@ -1,0 +1,3 @@
+[submodule "external/objaverse-rendering"]
+	path = external/objaverse-rendering
+	url = https://github.com/allenai/objaverse-rendering
