@@ -2,7 +2,6 @@ name: functa
 channels:
   - pyg
   - pytorch
-  - nvidia
   - conda-forge
   - defaults
 dependencies:
@@ -10,7 +9,7 @@ dependencies:
   - pytorch
   - torchaudio
   - torchvision
-  - pytorch-cuda=11.8
+  - pytorch
   - numpy
   - pip
   - pip:

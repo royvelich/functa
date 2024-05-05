@@ -21,14 +21,19 @@ if __name__ == '__main__':
         output_category_folder_path = output_folder_path / category
         output_category_folder_path.mkdir(parents=True, exist_ok=True)
         files = [item for item in input_category_folder_path.iterdir() if item.is_file()]
+        print("Iterating through files in category: ", category)
         for file in files:
-            command = [
-                'blender', '-b', '-P', './external/objaverse-rendering/scripts/blender_script.py', '--',
-                '--object_path', str(file),
-                '--output_dir', str(output_category_folder_path),
-                '--engine', 'CYCLES',
-                '--num_images', '12',
-                '--camera_dist', '2']
 
-            result = subprocess.run(command, text=True, capture_output=True)
+            command = f"/Applications/Blender.app/Contents/MacOS/Blender -b -P ./external/objaverse-rendering/scripts/blender_script.py -- --object_path {str(file)} --output_dir {str(output_category_folder_path)} --engine CYCLES --num_images 12 --camera_dist 2"
+
+            # command = [
+                # '/Applications/Blender.app/Contents/MacOS/Blender', '-b', '-P', './external/objaverse-rendering/scripts/blender_script.py', '--',
+                # '--object_path', str(file),
+                # '--output_dir', str(output_category_folder_path),
+                # '--engine', 'CYCLES',
+                # '--num_images', '12',
+                # '--camera_dist', '2']
+
+            result = subprocess.run(command, shell=True)
             pass
+        print("Finished rendering category: ", category)
