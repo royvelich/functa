@@ -5892,3 +5892,6 @@ rendered/chair/fec95c6bb8b546be95c62aa7dfe01c1a/009.png
 rendered/chair/fec95c6bb8b546be95c62aa7dfe01c1a/010.png
 rendered/chair/fec95c6bb8b546be95c62aa7dfe01c1a/011.png
 .DS_Store
+src/__pycache__/models.cpython-310.pyc
+src/models/__pycache__/siren.cpython-310.pyc
+src/datasets/__pycache__/chairs.cpython-310.pyc
