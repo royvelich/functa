@@ -20,16 +20,23 @@ class SirenLayer(torch.nn.Module):
     def forward(self, x):
         return torch.sin(self.w0 * self.linear(x))
 
-class SirenModel(pl.LightningModule):
+class ModulatedSirenModel(pl.LightningModule):
     def __init__(self):
         super().__init__()
         layer_sizes = [2] + [256] * 9 + [3]
-        self.layers = torch.nn.ModuleList(
+        self.layers_1 = torch.nn.ModuleList(
             [SirenLayer(layer_sizes[i], layer_sizes[i + 1], first_layer=(i == 0)) for i in range(len(layer_sizes) - 1)]
         )
+        self.latent_vectors = torch.empty(0)
+
+        # layer_size = [2] + [16] + [3]
+        # self.layers = torch.nn.ModuleList(
+            # [SirenLayer(layer_size[i], layer_size[i + 1], first_layer=(i == 0)) for i in range(len(layer_size) - 1)]
+        # )
 
         print("Model initialized")
         print(f"Layer 1: {self.layers[0]}")
+        print(f"Layer 2: {self.layers[1]}")
         print(f"Bias: {self.layers[0].linear.bias}")
         print(f"Bias_len: {len(self.layers[0].linear.bias)}")
         print(f"Bias shape: {self.layers[0].linear.bias.shape}")
@@ -40,9 +47,14 @@ class SirenModel(pl.LightningModule):
         return x
 
     def training_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self(x)
-        loss = torch.nn.functional.mse_loss(y_hat, y)
+        rgb, _ = batch
+        x = np.arange(512)
+        y = np.arange(512)
+        xx, yy = np.meshgrid(x, y)
+        coordinates = torch.tensor(np.stack([xx, yy], axis=-1), dtype=torch.float32).reshape(-1, 2)
+
+        rgb_hat = self(coordinates)
+        loss = torch.nn.functional.mse_loss(rgb_hat, rgb)
         self.log('train_loss', loss)
         return loss
 
