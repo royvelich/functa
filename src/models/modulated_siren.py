@@ -1,63 +1,112 @@
 import torch
+from torch import nn
 import pytorch_lightning as pl
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 
-class SirenLayer(torch.nn.Module):
-    def __init__(self, in_features, out_features, w0=30, first_layer=False):
+class ModulatedSineLayer(torch.nn.Module):
+    def __init__(self, in_features, out_features, bias=True,
+                 is_first=False, omega_0=30):
         super().__init__()
+        self.omega_0 = omega_0
+        self.is_first = is_first
+        
         self.in_features = in_features
-        self.out_features = out_features
-        self.linear = torch.nn.Linear(in_features, out_features)
-
-        self.w0 = w0
-
+        self.linear = nn.Linear(in_features, out_features, bias=bias)
+        self.shift_mod = nn.Parameter(torch.zeros(1, out_features), requires_grad=False)
+        
+        self.init_weights()
+    
+    def init_weights(self):
         with torch.no_grad():
-            if first_layer:
-                self.linear.weight.uniform_(-1 / in_features, 1 / in_features)
+            if self.is_first:
+                self.linear.weight.uniform_(-1 / self.in_features,
+                                             1 / self.in_features)      
             else:
-                self.linear.weight.uniform_(-np.sqrt(6 / in_features) / w0, np.sqrt(6 / in_features) / w0)
-
-    def forward(self, x):
-        return torch.sin(self.w0 * self.linear(x))
+                self.linear.weight.uniform_(-np.sqrt(6 / self.in_features) / self.omega_0, 
+                                             np.sqrt(6 / self.in_features) / self.omega_0)
+        
+    def forward(self, input):
+        return torch.sin(self.omega_0 * (self.linear(input) + self.shift_mod))
 
 class ModulatedSirenModel(pl.LightningModule):
-    def __init__(self):
+    def __init__(self, in_features, hidden_features, hidden_layers, out_features, outermost_linear=False, 
+                 first_omega_0=30, hidden_omega_0=30.):
         super().__init__()
-        layer_sizes = [2] + [256] * 9 + [3]
-        self.layers_1 = torch.nn.ModuleList(
-            [SirenLayer(layer_sizes[i], layer_sizes[i + 1], first_layer=(i == 0)) for i in range(len(layer_sizes) - 1)]
-        )
-        self.latent_vectors = torch.empty(0)
+        self.last_used_optimizer_index = 0
+        self.net = []
+        self.net.append(ModulatedSineLayer(in_features, hidden_features, 
+                                  is_first=True, omega_0=first_omega_0))
 
-        # layer_size = [2] + [16] + [3]
-        # self.layers = torch.nn.ModuleList(
-            # [SirenLayer(layer_size[i], layer_size[i + 1], first_layer=(i == 0)) for i in range(len(layer_size) - 1)]
-        # )
+        for i in range(hidden_layers):
+            self.net.append(ModulatedSineLayer(hidden_features, hidden_features, 
+                                      is_first=False, omega_0=hidden_omega_0))
 
-        print("Model initialized")
-        print(f"Layer 1: {self.layers[0]}")
-        print(f"Layer 2: {self.layers[1]}")
-        print(f"Bias: {self.layers[0].linear.bias}")
-        print(f"Bias_len: {len(self.layers[0].linear.bias)}")
-        print(f"Bias shape: {self.layers[0].linear.bias.shape}")
+        if outermost_linear:
+            final_linear = nn.Linear(hidden_features, out_features)
+            
+            with torch.no_grad():
+                final_linear.weight.uniform_(-np.sqrt(6 / hidden_features) / hidden_omega_0, 
+                                              np.sqrt(6 / hidden_features) / hidden_omega_0)
+                
+            self.net.append(final_linear)
+        else:
+            self.net.append(ModulatedSineLayer(hidden_features, out_features, 
+                                      is_first=False, omega_0=hidden_omega_0))
+        
+        self.net = nn.Sequential(*self.net)
 
     def forward(self, x):
-        for layer in self.layers:
-            x = layer(x)
-        return x
+        output = self.net(x)
+        return output
 
-    def training_step(self, batch, batch_idx):
-        rgb, _ = batch
-        x = np.arange(512)
-        y = np.arange(512)
-        xx, yy = np.meshgrid(x, y)
-        coordinates = torch.tensor(np.stack([xx, yy], axis=-1), dtype=torch.float32).reshape(-1, 2)
-
-        rgb_hat = self(coordinates)
-        loss = torch.nn.functional.mse_loss(rgb_hat, rgb)
+    def training_step(self, batch, batch_idx, optimizer_idx):
+        coords, pixels = batch
+        pixels_hat = self(coords)
+        loss = torch.nn.functional.mse_loss(pixels_hat, pixels)
         self.log('train_loss', loss)
         return loss
+    
+    def on_train_epoch_end(self):
+        optimizer = self.trainer.optimizers[self.last_used_optimizer_index]
+        lr = optimizer.param_groups[0]['lr']
+        self.log('learning_rate', lr)
+        self.log('global_gradient_step', self.global_step)
+    
+    def on_train_end(self):
+        print('Training finished!')
+        print(self.net[1].shift_mod)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=0.001)
-        return optimizer
+        optimizer1 = torch.optim.Adam(self.parameters(), lr=3e-6)
+        optimizer2 = torch.optim.SGD(self.parameters(), lr=1e-2)
+        return [optimizer1, optimizer2]
+
+    def optimizer_step(
+        self,
+        epoch,
+        batch_idx,
+        optimizer,
+        optimizer_idx,
+        optimizer_closure,
+        on_tpu=False,
+        using_native_amp=False,
+        using_lbfgs=False,
+    ):
+        if epoch % 4 == 0:
+            self.last_used_optimizer_index = 0
+            optimizer = self.optimizers()[0]  # Use optimizer1
+            for layer in self.net[:-1]:
+                    print(layer)
+                    layer.shift_mod.requires_grad = False
+                    layer.linear.weight.requires_grad = True
+        else:
+            self.last_used_optimizer_index = 1
+            optimizer = self.optimizers()[1]  # Use optimizer2
+            for layer in self.net[:-1]:
+                    layer.shift_mod.requires_grad = True
+                    layer.linear.weight.requires_grad = False
+
+        # What the fuck is optimizer_closure???
+        optimizer.step(closure=optimizer_closure)
+
