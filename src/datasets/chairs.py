@@ -27,7 +27,8 @@ class Chairs(Dataset):
         
         
     def __len__(self):
-        return 1
+        # For testing last.
+        return 2
 
     def __getitem__(self, idx):
 

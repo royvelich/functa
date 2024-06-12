@@ -3,6 +3,7 @@ from torch import nn
 import pytorch_lightning as pl
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
+from tqdm import tqdm
 import wandb
 
 # Modulation size is 256
@@ -61,51 +62,62 @@ class ModulatedSirenModel(pl.LightningModule):
         
         self.net = nn.Sequential(*self.net)
 
+        self.last_processed_batch = None
+
     def forward(self, x):
         for layer in self.net[:-1]:
             x = layer(x, self.phi)
         x = self.net[-1](x)
         return x
 
-    def on_train_epoch_start(self):
-        if self.current_epoch % 4 == 0:
-            self.last_used_optimizer_index = 0
-            self.phi.data = torch.zeros(256).cuda()
-            self.phi.requires_grad = False
-            for layer in self.net[:-1]:
-                layer.linear.weight.requires_grad = True
-                layer.linear.bias.requires_grad = True
-                layer.modulation.weight.requires_grad = True
-                layer.modulation.bias.requires_grad = True
-            self.net[-1].weight.requires_grad = True
-            self.net[-1].bias.requires_grad = True
-        else:
-            self.last_used_optimizer_index = 1
-            self.phi.requires_grad = True
-            for layer in self.net[:-1]:
-                layer.linear.weight.requires_grad = False
-                layer.linear.bias.requires_grad = False
-                layer.modulation.weight.requires_grad = False
-                layer.modulation.bias.requires_grad = False
-            self.net[-1].weight.requires_grad = False
-            self.net[-1].bias.requires_grad = False
-        
+    def freeze_phi(self):
+        self.phi.requires_grad = False
+        for layer in self.net[:-1]:
+            layer.linear.weight.requires_grad = True
+            layer.linear.bias.requires_grad = True
+            layer.modulation.weight.requires_grad = True
+            layer.modulation.bias.requires_grad = True
+        self.net[-1].weight.requires_grad = True
+        self.net[-1].bias.requires_grad = True
+    
+    def freeze_base(self):
+        self.phi.data = torch.zeros(256).cuda()
+        self.phi.requires_grad = True
+        for layer in self.net[:-1]:
+            layer.linear.weight.requires_grad = False
+            layer.linear.bias.requires_grad = False
+            layer.modulation.weight.requires_grad = False
+            layer.modulation.bias.requires_grad = False
+        self.net[-1].weight.requires_grad = False
+        self.net[-1].bias.requires_grad = False
+
+    def on_train_epoch_start(self):       
         print(f"START EPOCH WEIGHT: {self.net[-2].linear.weight}")
         print(f"START EPOCH BIAS: {self.net[-2].linear.bias}")
         print(f"START EPOCH phi: {self.phi}")
+    
+    def on_train_batch_start(self, batch, batch_idx):
+        self.freeze_base()
+        inner_loop_optimizer = torch.optim.SGD(self.parameters(), lr=1e-2)
+        for _ in range(3):
+            inner_loop_optimizer.zero_grad()
+            coords, pixels = batch
+            pixels_hat = self(coords)
+            loss = torch.nn.functional.mse_loss(pixels_hat, pixels)
+            loss.backward()
+            inner_loop_optimizer.step()
+            self.log('inner_loop_loss', loss)
+        self.freeze_phi()
 
-    def training_step(self, batch, batch_idx, optimizer_idx):
+    def training_step(self, batch, batch_idx):
         coords, pixels = batch
         pixels_hat = self(coords)
         loss = torch.nn.functional.mse_loss(pixels_hat, pixels)
         self.log('train_loss', loss)
         return loss
-    
+
     def on_train_epoch_end(self):
-        
-
-
-        optimizer = self.trainer.optimizers[self.last_used_optimizer_index]
+        optimizer = self.trainer.optimizers[0]
         lr = optimizer.param_groups[0]['lr']
         self.log('learning_rate', lr)
         print(f"END EPOCH WEIGHT: {self.net[-2].linear.weight}")
@@ -120,28 +132,45 @@ class ModulatedSirenModel(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer1 = torch.optim.Adam(self.parameters(), lr=3e-6)
-        optimizer2 = torch.optim.SGD(self.parameters(), lr=1e-2)
-        return [optimizer1, optimizer2]
+        # optimizer2 = torch.optim.SGD(self.parameters(), lr=1e-2)
+        return [optimizer1]
 
-    def optimizer_step(
-        self,
-        epoch,
-        batch_idx,
-        optimizer,
-        optimizer_idx,
-        optimizer_closure,
-        on_tpu=False,
-        using_native_amp=False,
-        using_lbfgs=False,
-    ):
-        if epoch % 4 == 0:
-            self.last_used_optimizer_index = 0
-            optimizer = self.optimizers()[0]  # Use optimizer1
-        else:
-            self.last_used_optimizer_index = 1
-            optimizer = self.optimizers()[1]  # Use optimizer2         
+    def train_latent(self, batch):
+        # Should be use outside for debugging.
+        self.phi.data = torch.zeros(256)
+        self.freeze_base()
+        inner_loop_optimizer = torch.optim.SGD(self.parameters(), lr=1e-2)
+        for _ in tqdm(range(3)):
+            print(f"START PHI: {self.phi}")
+            inner_loop_optimizer.zero_grad()
+            coords, pixels = batch
+            pixels_hat = self(coords)
+            loss = torch.nn.functional.mse_loss(pixels_hat, pixels)
+            loss.backward()
+            inner_loop_optimizer.step()
+            self.log('inner_loop_loss', loss)
+            print(f"END PHI: {self.phi}")
 
 
-        # What the fuck is optimizer_closure???
-        optimizer.step(closure=optimizer_closure)
+    # def optimizer_step(
+    #     self,
+    #     epoch,
+    #     batch_idx,
+    #     optimizer,
+    #     optimizer_idx,
+    #     optimizer_closure,
+    #     on_tpu=False,
+    #     using_native_amp=False,
+    #     using_lbfgs=False,
+    # ):
+    #     if epoch % 4 == 0:
+    #         self.last_used_optimizer_index = 0
+    #         optimizer = self.optimizers()[0]  # Use optimizer1
+    #     else:
+    #         self.last_used_optimizer_index = 1
+    #         optimizer = self.optimizers()[1]  # Use optimizer2         
+
+
+    #     # What the fuck is optimizer_closure???
+    #     optimizer.step(closure=optimizer_closure)
 

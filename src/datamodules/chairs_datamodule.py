@@ -18,7 +18,9 @@ class ChairsDatamodule(pl.LightningDataModule):
         self.train_dataloader =  DataLoader(
             self.train_dataset,
             batch_size=self.batch_size,
-            shuffle=True
+            shuffle=True,
+            persistent_workers=True,
+            num_workers=8,
             )
         
         return self.train_dataloader
