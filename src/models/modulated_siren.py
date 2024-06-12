@@ -3,17 +3,20 @@ from torch import nn
 import pytorch_lightning as pl
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
+import wandb
+
+# Modulation size is 256
 
 class ModulatedSineLayer(torch.nn.Module):
     def __init__(self, in_features, out_features, bias=True,
-                 is_first=False, omega_0=30):
+                 is_first=False, omega_0=30, modulation_size=256):
         super().__init__()
         self.omega_0 = omega_0
         self.is_first = is_first
         
         self.in_features = in_features
         self.linear = nn.Linear(in_features, out_features, bias=bias)
-        self.shift_mod = nn.Parameter(torch.zeros(1, out_features), requires_grad=False)
+        self.modulation = nn.Linear(modulation_size, out_features, bias=True)
         
         self.init_weights()
     
@@ -26,13 +29,15 @@ class ModulatedSineLayer(torch.nn.Module):
                 self.linear.weight.uniform_(-np.sqrt(6 / self.in_features) / self.omega_0, 
                                              np.sqrt(6 / self.in_features) / self.omega_0)
         
-    def forward(self, input):
-        return torch.sin(self.omega_0 * (self.linear(input) + self.shift_mod))
+    def forward(self, input, phi):
+        return torch.sin(self.omega_0 * (self.linear(input) + self.modulation(phi)))
 
 class ModulatedSirenModel(pl.LightningModule):
     def __init__(self, in_features, hidden_features, hidden_layers, out_features, outermost_linear=False, 
                  first_omega_0=30, hidden_omega_0=30.):
         super().__init__()
+
+        self.phi = nn.Parameter(torch.zeros(256))
         self.last_used_optimizer_index = 0
         self.net = []
         self.net.append(ModulatedSineLayer(in_features, hidden_features, 
@@ -57,8 +62,37 @@ class ModulatedSirenModel(pl.LightningModule):
         self.net = nn.Sequential(*self.net)
 
     def forward(self, x):
-        output = self.net(x)
-        return output
+        for layer in self.net[:-1]:
+            x = layer(x, self.phi)
+        x = self.net[-1](x)
+        return x
+
+    def on_train_epoch_start(self):
+        if self.current_epoch % 4 == 0:
+            self.last_used_optimizer_index = 0
+            self.phi.data = torch.zeros(256).cuda()
+            self.phi.requires_grad = False
+            for layer in self.net[:-1]:
+                layer.linear.weight.requires_grad = True
+                layer.linear.bias.requires_grad = True
+                layer.modulation.weight.requires_grad = True
+                layer.modulation.bias.requires_grad = True
+            self.net[-1].weight.requires_grad = True
+            self.net[-1].bias.requires_grad = True
+        else:
+            self.last_used_optimizer_index = 1
+            self.phi.requires_grad = True
+            for layer in self.net[:-1]:
+                layer.linear.weight.requires_grad = False
+                layer.linear.bias.requires_grad = False
+                layer.modulation.weight.requires_grad = False
+                layer.modulation.bias.requires_grad = False
+            self.net[-1].weight.requires_grad = False
+            self.net[-1].bias.requires_grad = False
+        
+        print(f"START EPOCH WEIGHT: {self.net[-2].linear.weight}")
+        print(f"START EPOCH BIAS: {self.net[-2].linear.bias}")
+        print(f"START EPOCH phi: {self.phi}")
 
     def training_step(self, batch, batch_idx, optimizer_idx):
         coords, pixels = batch
@@ -68,14 +102,21 @@ class ModulatedSirenModel(pl.LightningModule):
         return loss
     
     def on_train_epoch_end(self):
+        
+
+
         optimizer = self.trainer.optimizers[self.last_used_optimizer_index]
         lr = optimizer.param_groups[0]['lr']
         self.log('learning_rate', lr)
+        print(f"END EPOCH WEIGHT: {self.net[-2].linear.weight}")
+        print(f"END EPOCH BIAS: {self.net[-2].linear.bias}")
+        print(f"END EPOCH phi: {self.phi}")
+        
+        # self.log('phi', self.phi)
         self.log('global_gradient_step', self.global_step)
     
     def on_train_end(self):
         print('Training finished!')
-        print(self.net[1].shift_mod)
 
     def configure_optimizers(self):
         optimizer1 = torch.optim.Adam(self.parameters(), lr=3e-6)
@@ -96,16 +137,10 @@ class ModulatedSirenModel(pl.LightningModule):
         if epoch % 4 == 0:
             self.last_used_optimizer_index = 0
             optimizer = self.optimizers()[0]  # Use optimizer1
-            for layer in self.net[:-1]:
-                    print(layer)
-                    layer.shift_mod.requires_grad = False
-                    layer.linear.weight.requires_grad = True
         else:
             self.last_used_optimizer_index = 1
-            optimizer = self.optimizers()[1]  # Use optimizer2
-            for layer in self.net[:-1]:
-                    layer.shift_mod.requires_grad = True
-                    layer.linear.weight.requires_grad = False
+            optimizer = self.optimizers()[1]  # Use optimizer2         
+
 
         # What the fuck is optimizer_closure???
         optimizer.step(closure=optimizer_closure)

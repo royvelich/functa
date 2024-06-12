@@ -28,7 +28,7 @@ def main(args):
     train_loader = ChairsDatamodule(path= "/home/arkadi.piven/Code/functa/rendered/chair", batch_size=args.batch_size)
 
     # Initialize the model
-    model = ModulatedSirenModel(in_features=2, hidden_features=256, hidden_layers=9, out_features=3, outermost_linear=True, first_omega_0=30, hidden_omega_0=30.)
+    model = ModulatedSirenModel(in_features=2, hidden_features=256, hidden_layers=args.hidden_layers, out_features=3, outermost_linear=True, first_omega_0=30, hidden_omega_0=30.)
 
     # Initialize a trainer
     trainer = Trainer(logger=wandb_logger,
@@ -45,6 +45,7 @@ def arg_parser():
     parser.add_argument('--name', type=str, required=True)
     parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--max_epochs', type=int, default=1000)
+    parser.add_argument('--hidden_layers', type=int, default=9)
 
 
     return parser.parse_args()

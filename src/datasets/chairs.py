@@ -42,12 +42,12 @@ class Chairs(Dataset):
 
         transform = Compose([ Resize((512, 512)), ToTensor(), Normalize(torch.Tensor([0.5]), torch.Tensor([0.5]))])
         chair_1 = transform(chair_1)
-        print(f"Chair 1 shape {chair_1.shape}")
+        # print(f"Chair 1 shape {chair_1.shape}")
         pixels = chair_1.permute(1, 2, 0).view(-1, 3)
         coords = get_mgrid(512, 2)
         
-        print(f"Coordinates shapes {coords.shape}")
-        print(f"c1 shape {pixels.shape}")
+        # print(f"Coordinates shapes {coords.shape}")
+        # print(f"c1 shape {pixels.shape}")
 
         return coords, pixels
 
