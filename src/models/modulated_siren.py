@@ -81,7 +81,7 @@ class ModulatedSirenModel(pl.LightningModule):
         self.net[-1].bias.requires_grad = True
     
     def freeze_base(self):
-        self.phi.data = torch.zeros(256).cuda()
+        self.phi.data = torch.zeros(256).to(self.device)
         self.phi.requires_grad = True
         for layer in self.net[:-1]:
             layer.linear.weight.requires_grad = False
@@ -138,7 +138,18 @@ class ModulatedSirenModel(pl.LightningModule):
     def train_latent(self, batch):
         # Should be use outside for debugging.
         self.phi.data = torch.zeros(256)
-        self.freeze_base()
+        # self.freeze_base()
+        self.phi.requires_grad = True
+        for layer in self.net[:-1]:
+            layer.linear.weight.requires_grad = False
+            layer.linear.bias.requires_grad = False
+            layer.modulation.weight.requires_grad = False
+            layer.modulation.bias.requires_grad = False
+        self.net[-1].weight.requires_grad = False
+        self.net[-1].bias.requires_grad = False
+
+
+
         inner_loop_optimizer = torch.optim.SGD(self.parameters(), lr=1e-2)
         for _ in tqdm(range(3)):
             print(f"START PHI: {self.phi}")

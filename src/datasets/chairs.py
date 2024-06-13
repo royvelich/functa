@@ -20,15 +20,16 @@ class Chairs(Dataset):
     def __init__(self, path):
         super().__init__()
         print("Chairs dataset initialized")
-        self.theta_1 = "007"
+        self.theta_1 = "008"
         self.theta_2 = "010"
         self.path = path
         self.chairs = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
+        print(self.chairs)
         
         
     def __len__(self):
         # For testing last.
-        return 2
+        return len(self.chairs)
 
     def __getitem__(self, idx):
 
@@ -39,7 +40,7 @@ class Chairs(Dataset):
         chair_2 = os.path.join(chair_path, f"{self.theta_2}.png")
 
         chair_1 = Image.open(chair_1).convert("RGB")
-        chair_2 = Image.open(chair_2).convert("RGB")
+        # chair_2 = Image.open(chair_2).convert("RGB")
 
         transform = Compose([ Resize((512, 512)), ToTensor(), Normalize(torch.Tensor([0.5]), torch.Tensor([0.5]))])
         chair_1 = transform(chair_1)

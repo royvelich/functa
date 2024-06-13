@@ -6,6 +6,7 @@ from pytorch_lightning import seed_everything
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.loggers import WandbLogger
+# from pytorch_lightning.strategies import DDPStrategy
 
 
 def main(args):
@@ -18,21 +19,17 @@ def main(args):
 
     # Model checkpointing
     checkpoint_callback = ModelCheckpoint(dirpath=f'checkpoints/{wandb_logger_name}', save_last=True, every_n_epochs=100)
-    early_stopping = EarlyStopping(
-      monitor='train_loss',  # Metric to monitor
-      patience=100,           # Number of epochs with no improvement
-      verbose=True,          # Print messages when stopping
-      mode='min'             # Minimize the monitored metric
-    )
 
     train_loader = ChairsDatamodule(path= "/home/arkadi.piven/Code/functa/rendered/chair", batch_size=args.batch_size)
+
+    # strategy = DDPStrategy(find_unused_parameters=False)
 
     # Initialize the model
     model = ModulatedSirenModel(in_features=2, hidden_features=256, hidden_layers=args.hidden_layers, out_features=3, outermost_linear=True, first_omega_0=30, hidden_omega_0=30.)
 
     # Initialize a trainer
     trainer = Trainer(logger=wandb_logger,
-                       callbacks=[checkpoint_callback, early_stopping],
+                       callbacks=[checkpoint_callback],
                          max_epochs=args.max_epochs,
                            gpus=1 if torch.cuda.is_available() else 0,
                              log_every_n_steps=1)
