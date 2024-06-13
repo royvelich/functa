@@ -6,7 +6,7 @@ from pytorch_lightning import seed_everything
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.loggers import WandbLogger
-# from pytorch_lightning.strategies import DDPStrategy
+from pytorch_lightning.strategies import DDPStrategy
 
 
 def main(args):
@@ -22,17 +22,30 @@ def main(args):
 
     train_loader = ChairsDatamodule(path= "/home/arkadi.piven/Code/functa/rendered/chair", batch_size=args.batch_size)
 
-    # strategy = DDPStrategy(find_unused_parameters=False)
+    strategy = DDPStrategy(find_unused_parameters=False)
 
     # Initialize the model
     model = ModulatedSirenModel(in_features=2, hidden_features=256, hidden_layers=args.hidden_layers, out_features=3, outermost_linear=True, first_omega_0=30, hidden_omega_0=30.)
 
     # Initialize a trainer
-    trainer = Trainer(logger=wandb_logger,
-                       callbacks=[checkpoint_callback],
-                         max_epochs=args.max_epochs,
-                           gpus=1 if torch.cuda.is_available() else 0,
-                             log_every_n_steps=1)
+
+    if args.ddp:
+      trainer = Trainer(logger=wandb_logger,
+                        callbacks=[checkpoint_callback],
+                        max_epochs=args.max_epochs,
+                        accelerator='gpu',
+                        gpus=-1 if torch.cuda.is_available() else 0,
+                        log_every_n_steps=1,
+                        strategy=strategy
+                        )
+
+    else:
+      trainer = Trainer(logger=wandb_logger,
+                        callbacks=[checkpoint_callback],
+                        max_epochs=args.max_epochs,
+                        gpus=1 if torch.cuda.is_available() else 0,
+                        log_every_n_steps=1
+                        )
 
     trainer.fit(model, train_loader)
 
@@ -43,6 +56,7 @@ def arg_parser():
     parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--max_epochs', type=int, default=1000)
     parser.add_argument('--hidden_layers', type=int, default=9)
+    parser.add_argument('--ddp', action='store_true', default=False)
 
 
     return parser.parse_args()

@@ -53,5 +53,8 @@ class Chairs(Dataset):
 
         return coords, pixels
 
+    def get_chair_name_by_idx(self, idx):
+        return self.chairs[idx]
+
 
         
