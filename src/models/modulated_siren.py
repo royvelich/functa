@@ -35,9 +35,11 @@ class ModulatedSineLayer(torch.nn.Module):
 
 class ModulatedSirenModel(pl.LightningModule):
     def __init__(self, in_features, hidden_features, hidden_layers, out_features, outermost_linear=False, 
-                 first_omega_0=30, hidden_omega_0=30.):
+                 first_omega_0=30, hidden_omega_0=30., lr=3e-6):
         super().__init__()
 
+        self.lr = lr
+        print(f"LR IS {self.lr}")
         self.phi = nn.Parameter(torch.zeros(256))
         self.last_used_optimizer_index = 0
         self.net = []
@@ -81,6 +83,7 @@ class ModulatedSirenModel(pl.LightningModule):
         self.net[-1].bias.requires_grad = True
     
     def freeze_base(self):
+        # print(f"DEVICE IS {self.device}")
         self.phi.data = torch.zeros(256).to(self.device)
         self.phi.requires_grad = True
         for layer in self.net[:-1]:
@@ -92,9 +95,10 @@ class ModulatedSirenModel(pl.LightningModule):
         self.net[-1].bias.requires_grad = False
 
     def on_train_epoch_start(self):       
-        print(f"START EPOCH WEIGHT: {self.net[-2].linear.weight}")
-        print(f"START EPOCH BIAS: {self.net[-2].linear.bias}")
-        print(f"START EPOCH phi: {self.phi}")
+        ...
+        # print(f"START EPOCH WEIGHT: {self.net[-2].linear.weight}")
+        # print(f"START EPOCH BIAS: {self.net[-2].linear.bias}")
+        # print(f"START EPOCH phi: {self.phi}")
     
     def on_train_batch_start(self, batch, batch_idx):
         self.freeze_base()
@@ -120,9 +124,9 @@ class ModulatedSirenModel(pl.LightningModule):
         optimizer = self.trainer.optimizers[0]
         lr = optimizer.param_groups[0]['lr']
         self.log('learning_rate', lr)
-        print(f"END EPOCH WEIGHT: {self.net[-2].linear.weight}")
-        print(f"END EPOCH BIAS: {self.net[-2].linear.bias}")
-        print(f"END EPOCH phi: {self.phi}")
+        # print(f"END EPOCH WEIGHT: {self.net[-2].linear.weight}")
+        # print(f"END EPOCH BIAS: {self.net[-2].linear.bias}")
+        # print(f"END EPOCH phi: {self.phi}")
         
         # self.log('phi', self.phi)
         self.log('global_gradient_step', self.global_step)
@@ -131,7 +135,8 @@ class ModulatedSirenModel(pl.LightningModule):
         print('Training finished!')
 
     def configure_optimizers(self):
-        optimizer1 = torch.optim.Adam(self.parameters(), lr=3e-6)
+        optimizer1 = torch.optim.Adam(self.parameters(), lr=self.lr)
+        
         # optimizer2 = torch.optim.SGD(self.parameters(), lr=1e-2)
         return [optimizer1]
 

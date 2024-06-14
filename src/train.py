@@ -25,7 +25,7 @@ def main(args):
     strategy = DDPStrategy(find_unused_parameters=False)
 
     # Initialize the model
-    model = ModulatedSirenModel(in_features=2, hidden_features=256, hidden_layers=args.hidden_layers, out_features=3, outermost_linear=True, first_omega_0=30, hidden_omega_0=30.)
+    model = ModulatedSirenModel(in_features=2, hidden_features=256, hidden_layers=args.hidden_layers, out_features=3, outermost_linear=True, first_omega_0=30, hidden_omega_0=30., lr=args.lr)
 
     # Initialize a trainer
 
@@ -57,6 +57,7 @@ def arg_parser():
     parser.add_argument('--max_epochs', type=int, default=1000)
     parser.add_argument('--hidden_layers', type=int, default=9)
     parser.add_argument('--ddp', action='store_true', default=False)
+    parser.add_argument('--lr', type=float, default=3e-6)
 
 
     return parser.parse_args()
