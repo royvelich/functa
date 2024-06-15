@@ -8273,3 +8273,7 @@ src/models/__pycache__/modulated_siren.cpython-310.pyc
 checkpoints/all_chairs_fully_fledged_meta_learning/epoch=399-step=180400.ckpt
 checkpoints/fully_fledged_meta_learning_4_gpu/last.ckpt
 src/models/__pycache__/modulated_siren.cpython-310.pyc
+src/models/__pycache__/modulated_siren.cpython-310.pyc
+checkpoints/fully_fledged_meta_learning_4_gpu/epoch=1599-step=180800.ckpt
+checkpoints/all_chairs_fully_fledged_meta_learning/epoch=999-step=451000.ckpt
+src/models/__pycache__/modulated_siren.cpython-310.pyc
