@@ -20,12 +20,22 @@ def main(args):
     # Model checkpointing
     checkpoint_callback = ModelCheckpoint(dirpath=f'checkpoints/{wandb_logger_name}', save_last=True, every_n_epochs=100)
 
-    train_loader = ChairsDatamodule(path= "/home/arkadi.piven/Code/functa/rendered/chair", batch_size=args.batch_size)
+    train_loader = ChairsDatamodule(path= "/home/arkadi.piven/Code/functa/rendered/chair", dim=args.dim, batch_size=args.batch_size)
 
     strategy = DDPStrategy(find_unused_parameters=False)
 
     # Initialize the model
-    model = ModulatedSirenModel(in_features=2, hidden_features=256, hidden_layers=args.hidden_layers, out_features=3, outermost_linear=True, first_omega_0=30, hidden_omega_0=30., lr=args.lr)
+    model = ModulatedSirenModel(in_features=2,
+                                hidden_features=args.hidden_features,
+                                hidden_layers=args.hidden_layers,
+                                modulation_size=args.modulation_size,
+                                out_features=3,
+                                outermost_linear=True,
+                                first_omega_0=30,
+                                hidden_omega_0=30.,
+                                lr=args.lr,
+                                epochs=args.max_epochs
+                                )
 
     # Initialize a trainer
 
@@ -47,6 +57,8 @@ def main(args):
                         log_every_n_steps=1
                         )
 
+    if args.checkpoint:
+        model = ModulatedSirenModel.load_from_checkpoint(args.checkpoint, in_features=2, hidden_features=args.hidden_features, hidden_layers=args.hidden_layers, modulation_size=args.modulation_size, out_features=3, outermost_linear=True, first_omega_0=30, hidden_omega_0=30.)
     trainer.fit(model, train_loader)
 
 def arg_parser():
@@ -56,8 +68,12 @@ def arg_parser():
     parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--max_epochs', type=int, default=1000)
     parser.add_argument('--hidden_layers', type=int, default=9)
+    parser.add_argument('--hidden_features', type=int, default=256)
     parser.add_argument('--ddp', action='store_true', default=False)
     parser.add_argument('--lr', type=float, default=3e-6)
+    parser.add_argument('--dim', type=int, default=256)
+    parser.add_argument('--modulation_size', type=int, default=256)
+    parser.add_argument('--checkpoint', type=str, default=None)
 
 
     return parser.parse_args()

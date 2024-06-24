@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import pytorch_lightning as pl
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau, MultiStepLR
 import numpy as np
 from tqdm import tqdm
 import wandb
@@ -34,21 +34,23 @@ class ModulatedSineLayer(torch.nn.Module):
         return torch.sin(self.omega_0 * (self.linear(input) + self.modulation(phi)))
 
 class ModulatedSirenModel(pl.LightningModule):
-    def __init__(self, in_features, hidden_features, hidden_layers, out_features, outermost_linear=False, 
-                 first_omega_0=30, hidden_omega_0=30., lr=3e-6):
+    def __init__(self, in_features, hidden_features, hidden_layers, modulation_size, out_features, outermost_linear=False, 
+                 first_omega_0=30, hidden_omega_0=30., lr=3e-6, epochs=2000):
         super().__init__()
 
         self.lr = lr
+        self.epochs = epochs
+        self.modulation_size = modulation_size
         print(f"LR IS {self.lr}")
-        self.phi = nn.Parameter(torch.zeros(256))
+        self.phi = nn.Parameter(torch.zeros(modulation_size))
         self.last_used_optimizer_index = 0
         self.net = []
         self.net.append(ModulatedSineLayer(in_features, hidden_features, 
-                                  is_first=True, omega_0=first_omega_0))
+                                  is_first=True, omega_0=first_omega_0, modulation_size=self.modulation_size))
 
         for i in range(hidden_layers):
             self.net.append(ModulatedSineLayer(hidden_features, hidden_features, 
-                                      is_first=False, omega_0=hidden_omega_0))
+                                      is_first=False, omega_0=hidden_omega_0, modulation_size=modulation_size))
 
         if outermost_linear:
             final_linear = nn.Linear(hidden_features, out_features)
@@ -84,7 +86,7 @@ class ModulatedSirenModel(pl.LightningModule):
     
     def freeze_base(self):
         # print(f"DEVICE IS {self.device}")
-        self.phi.data = torch.zeros(256).to(self.device)
+        self.phi.data = torch.zeros(self.modulation_size).to(self.device)
         self.phi.requires_grad = True
         for layer in self.net[:-1]:
             layer.linear.weight.requires_grad = False
@@ -110,7 +112,7 @@ class ModulatedSirenModel(pl.LightningModule):
             loss = torch.nn.functional.mse_loss(pixels_hat, pixels)
             loss.backward()
             inner_loop_optimizer.step()
-            self.log('inner_loop_loss', loss)
+        self.log('inner_loop_loss', loss)
         self.freeze_phi()
 
     def training_step(self, batch, batch_idx):
@@ -136,13 +138,18 @@ class ModulatedSirenModel(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer1 = torch.optim.Adam(self.parameters(), lr=self.lr)
+        milestones = [int(self.epochs * 0.3), int(self.epochs * 0.7)]
+        scheduler = MultiStepLR(optimizer1, milestones=milestones, gamma=0.1)
         
         # optimizer2 = torch.optim.SGD(self.parameters(), lr=1e-2)
-        return [optimizer1]
+        return {
+            'optimizer': optimizer1,
+            'lr_scheduler': scheduler,
+        }
 
     def train_latent(self, batch):
         # Should be use outside for debugging.
-        self.phi.data = torch.zeros(256)
+        self.phi.data = torch.zeros(self.modulation_size)
         # self.freeze_base()
         self.phi.requires_grad = True
         for layer in self.net[:-1]:
@@ -164,8 +171,8 @@ class ModulatedSirenModel(pl.LightningModule):
             loss = torch.nn.functional.mse_loss(pixels_hat, pixels)
             loss.backward()
             inner_loop_optimizer.step()
-            self.log('inner_loop_loss', loss)
             print(f"END PHI: {self.phi}")
+            
 
 
     # def optimizer_step(

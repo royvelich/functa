@@ -3,12 +3,12 @@ from src.datasets.chairs import Chairs
 import pytorch_lightning as pl
 
 class ChairsDatamodule(pl.LightningDataModule):
-    def __init__(self, path, batch_size = 1):
+    def __init__(self, path, dim, batch_size = 1):
         super().__init__()
         self.batch_size = batch_size
         self.path = path
 
-        self.train_dataset = Chairs(self.path)
+        self.train_dataset = Chairs(self.path, dim)
 
     def setup(self, stage=None):
         pass
@@ -21,6 +21,7 @@ class ChairsDatamodule(pl.LightningDataModule):
             shuffle=True,
             persistent_workers=True,
             num_workers=30,
+            pin_memory=True
             )
         
         return self.train_dataloader
